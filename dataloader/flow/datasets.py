@@ -13,6 +13,7 @@ import os
 import random
 from glob import glob
 import os.path as osp
+from pathlib import Path
 
 from utils import frame_utils
 from dataloader.flow.transforms import FlowAugmentor, SparseFlowAugmentor
@@ -479,7 +480,7 @@ def build_train_dataset(args):
         train_dataset = 2 * kitti15 + kitti12
 
     elif args.stage == "singapore_vo":
-        train_dataset = SingaporeDataset(args.image_dir, args.label_dir, split="train", device=args.device)
+        train_dataset = SingaporeDataset(Path(args.image_dir), Path(args.label_dir), split="train")
 
     else:
         raise ValueError(f'stage {args.stage} is not supported')

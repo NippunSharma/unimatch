@@ -37,6 +37,8 @@ def get_args_parser():
                         help='image size for training')
     parser.add_argument('--padding_factor', default=16, type=int,
                         help='the input should be divisible by padding_factor, otherwise do padding or resizing')
+    parser.add_argument("--image_dir", type=str, help="folder containing all train and test trajectories.")
+    parser.add_argument("--label_dir", type=str, help="folder containing label csv files.")
 
     # evaluation
     parser.add_argument('--eval', action='store_true',
