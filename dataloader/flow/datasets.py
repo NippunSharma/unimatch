@@ -6,6 +6,8 @@
 import numpy as np
 import torch
 import torch.utils.data as data
+import cv2
+import pandas as pd
 
 import os
 import random
@@ -15,6 +17,82 @@ import os.path as osp
 from utils import frame_utils
 from dataloader.flow.transforms import FlowAugmentor, SparseFlowAugmentor
 
+class SingaporeDataset(data.Dataset):
+  def __init__(self, image_dir, label_dir, split="train", device="cpu"):
+    super().__init__()
+
+    self.label_dir = label_dir
+    self.image_dir = image_dir
+    self.split = split
+    self.device = device
+
+    self.trajectory_ids = []
+    if split == "train":
+      self.trajectory_ids = [1,2,3]
+    elif split == "val":
+      self.trajectory_ids = [4]
+    elif split == "test":
+      self.trajectory_ids = [5]
+    else:
+      raise RuntimeError(f"Invalid split type: {split}")
+
+    df = pd.read_csv(label_dir / "train_labels.csv")
+    test_df = pd.read_csv(label_dir / "submission_format.csv")
+    df = pd.concat([df, test_df], axis=0)
+
+    processed_df = pd.DataFrame(columns=["Filename", "TrajectoryId", "Timestamp",
+                                         "Easting", "Northing", "Height",
+                                         "Roll", "Pitch", "Yaw"])
+
+    trans_cols = ["Easting", "Northing", "Height"]
+    rot_cols = ["Roll", "Pitch", "Yaw"]
+
+    self.trans_cols = trans_cols
+    self.rot_cols = rot_cols
+
+    for id in self.trajectory_ids:
+      gt_labels = df[df["TrajectoryId"] == id].reset_index(drop=True)
+      gt_labels.loc[:, trans_cols] = \
+        gt_labels.loc[:, trans_cols] - gt_labels.shift(1).loc[:, trans_cols]
+      gt_labels.loc[:, rot_cols] = \
+        gt_labels.loc[:, rot_cols] - gt_labels.shift(1).loc[:, rot_cols]
+      gt_labels["PrevFilename"] = gt_labels.shift(1)["Filename"]
+      processed_df = pd.concat([processed_df, gt_labels.loc[1:, :]], axis=0)
+
+    self.processed_df = processed_df.reset_index(drop=True)
+
+  def __len__(self):
+    return self.processed_df.shape[0]
+
+  def __getitem__(self, idx):
+    filename1 = self.processed_df.loc[idx, "PrevFilename"].replace(".jpg", "")
+    filename2 = self.processed_df.loc[idx, "Filename"].replace(".jpg", "")
+    id = self.processed_df.loc[idx, "TrajectoryId"]
+    rot = self.processed_df.loc[idx, self.rot_cols].values.flatten().astype(float)
+    trans = self.processed_df.loc[idx, self.trans_cols].values.flatten().astype(float)
+    trans /= np.linalg.norm(trans) # make translation vector of unit length.
+
+    img1, img2 = None, None
+    if self.split == "train" or self.split == "val":
+        img1 = cv2.imread((self.image_dir / f"train_images-{id}" \
+                           / f"{filename1}.jpg").as_posix())
+        img2 = cv2.imread((self.image_dir / f"train_images-{id}" \
+                    / f"{filename2}.jpg").as_posix())
+    elif self.split == "test":
+        img1 = cv2.imread((self.image_dir / f"test_images" \
+                           / f"{filename1}.jpg").as_posix())
+        img2 = cv2.imread((self.image_dir / f"test_images" \
+                    / f"{filename2}.jpg").as_posix())
+
+    img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
+    img1 = cv2.rotate(img1, cv2.ROTATE_90_CLOCKWISE)
+
+    img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
+    img2 = cv2.rotate(img2, cv2.ROTATE_90_CLOCKWISE)
+
+    return torch.from_numpy(img1).permute(2,0,1).float().to(self.device), \
+            torch.from_numpy(img2).permute(2,0,1).float().to(self.device), \
+            torch.from_numpy(rot), torch.from_numpy(trans)
 
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False,
@@ -399,6 +477,9 @@ def build_train_dataset(args):
         kitti12 = KITTI12(aug_params, split='training')
 
         train_dataset = 2 * kitti15 + kitti12
+
+    elif args.stage == "singapore_vo":
+        train_dataset = SingaporeDataset(args.image_dir, args.label_dir, split="train", device=args.device)
 
     else:
         raise ValueError(f'stage {args.stage} is not supported')

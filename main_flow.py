@@ -6,9 +6,10 @@ import argparse
 import numpy as np
 import os
 
-from dataloader.flow.datasets import build_train_dataset
+from dataloader.flow.datasets import build_train_dataset, SingaporeDataset
 from unimatch.unimatch import UniMatch
 from loss.flow_loss import flow_loss_func
+from loss.vo_loss import vo_loss_func
 
 from evaluate_flow import (validate_chairs, validate_things, validate_sintel, validate_kitti,
                            create_kitti_submission, create_sintel_submission,
@@ -418,7 +419,7 @@ def main(args):
             train_sampler.set_epoch(epoch)
 
         for i, sample in enumerate(train_loader):
-            img1, img2, flow_gt, valid = [x.to(device) for x in sample]
+            img1, img2, rot_gt, trans_gt = [x.to(device) for x in sample]
 
             results_dict = model(img1, img2,
                                  attn_type=args.attn_type,
@@ -431,10 +432,9 @@ def main(args):
 
             flow_preds = results_dict['flow_preds']
 
-            loss, metrics = flow_loss_func(flow_preds, flow_gt, valid,
-                                           gamma=args.gamma,
-                                           max_flow=args.max_flow,
-                                           )
+            loss = vo_loss_func(flow_preds, rot_gt, trans_gt,
+                                args.batch_size, args.tau, args.gamma
+                                )
 
             if isinstance(loss, float):
                 continue
@@ -442,7 +442,7 @@ def main(args):
             if torch.isnan(loss):
                 continue
 
-            metrics.update({'total_loss': loss.item()})
+            metrics = {"total_loss": loss.item()}
 
             # more efficient zero_grad
             for param in model_without_ddp.parameters():
@@ -460,7 +460,7 @@ def main(args):
             if args.local_rank == 0:
                 logger.push(metrics)
 
-                logger.add_image_summary(img1, img2, flow_preds, flow_gt)
+                # logger.add_image_summary(img1, img2, flow_preds, flow_gt)
 
             total_steps += 1
 
