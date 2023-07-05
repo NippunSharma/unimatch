@@ -29,7 +29,7 @@ def pixelwise_e_estimation(grid_coords, matched_coords):
 
     e_pred = torch.cat([zeros, zeros, torch.sin(theta / 2.),
                         zeros, zeros, torch.cos(theta / 2.),
-                        torch.sin(theta / 2.), -torch.cos(theta / 2.), 0], axis=1) # [B,9,H,W]
+                        torch.sin(theta / 2.), -torch.cos(theta / 2.), zeros], axis=1) # [B,9,H,W]
     
     return e_pred, euler_angles, trans
 
