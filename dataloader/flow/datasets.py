@@ -19,13 +19,14 @@ from utils import frame_utils
 from dataloader.flow.transforms import FlowAugmentor, SparseFlowAugmentor
 
 class SingaporeDataset(data.Dataset):
-  def __init__(self, image_dir, label_dir, split="train", device="cpu"):
+  def __init__(self, image_dir, label_dir, split="train", device="cpu", image_size=[128,128]):
     super().__init__()
 
     self.label_dir = label_dir
     self.image_dir = image_dir
     self.split = split
     self.device = device
+    self.image_size = image_size
 
     self.trajectory_ids = []
     if split == "train":
@@ -90,6 +91,9 @@ class SingaporeDataset(data.Dataset):
 
     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
     img2 = cv2.rotate(img2, cv2.ROTATE_90_CLOCKWISE)
+
+    img1 = cv2.resize(img1, self.image_size)
+    img2 = cv2.resize(img2, self.image_size)
 
     return torch.from_numpy(img1).permute(2,0,1).float().to(self.device), \
             torch.from_numpy(img2).permute(2,0,1).float().to(self.device), \
@@ -480,7 +484,7 @@ def build_train_dataset(args):
         train_dataset = 2 * kitti15 + kitti12
 
     elif args.stage == "singapore_vo":
-        train_dataset = SingaporeDataset(Path(args.image_dir), Path(args.label_dir), split="train")
+        train_dataset = SingaporeDataset(Path(args.image_dir), Path(args.label_dir), split="train", image_size=args.image_size)
 
     else:
         raise ValueError(f'stage {args.stage} is not supported')

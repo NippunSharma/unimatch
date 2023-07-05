@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 import os
 
-from dataloader.flow.datasets import build_train_dataset, SingaporeDataset
+from dataloader.flow.datasets import build_train_dataset
 from unimatch.unimatch import UniMatch
 from loss.flow_loss import flow_loss_func
 from loss.vo_loss import vo_loss_func
