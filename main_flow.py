@@ -437,7 +437,7 @@ def main(args):
             flow_preds = results_dict['flow_preds']
 
             loss = vo_loss_func(flow_preds, rot_gt, trans_gt,
-                                args.batch_size, args.tau, args.gamma
+                                args.batch_size, device, args.tau, args.gamma,
                                 )
 
             if isinstance(loss, float):
