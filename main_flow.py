@@ -96,7 +96,7 @@ def get_args_parser():
     # loss
     parser.add_argument('--gamma', default=0.9, type=float,
                         help='exponential weighting')
-    parser.add_argument("--tau", defualt=0.5, type=float,
+    parser.add_argument("--tau", default=0.5, type=float,
                         help="trans/rot relative loss weight.")
 
     # predict on sintel and kitti test set for submission
