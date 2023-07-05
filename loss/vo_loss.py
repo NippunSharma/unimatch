@@ -40,7 +40,7 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamm
 
     n_predictions = len(flow_preds)
     vo_loss = 0.0
-    h, w = flow_preds.size()[-2:]
+    h, w = flow_preds[0].size()[-2:]
 
     grid_coords = coords_grid(batch_size, h, w).to(device) # [B,2,H,W]
 
