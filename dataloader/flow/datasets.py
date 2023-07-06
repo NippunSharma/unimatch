@@ -97,7 +97,7 @@ class SingaporeDataset(data.Dataset):
 
     return torch.from_numpy(img1).permute(2,0,1).float().to(self.device), \
             torch.from_numpy(img2).permute(2,0,1).float().to(self.device), \
-            torch.from_numpy(rot), torch.from_numpy(trans)
+            torch.from_numpy(rot * np.pi / 180.), torch.from_numpy(trans)
 
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False,
