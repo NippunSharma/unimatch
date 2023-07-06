@@ -7,8 +7,8 @@ def pixelwise_e_estimation(grid_coords, matched_coords):
     """
 
     # 1 point correspondences. (non-holonomic motion)
-    denom = matched_coords[:, 0, :, :] + grid_coords[:, 0, :, :]
-    numer = matched_coords[:, 1, :, :] - grid_coords[:, 1, :, :]
+    denom = matched_coords[:, 0, :, :] + grid_coords[:, 0, :, :] + 1e-7
+    numer = matched_coords[:, 1, :, :] - grid_coords[:, 1, :, :] + 1e-7
 
     theta = -2 * torch.atan2(numer, denom)# [B,H,W]
     b,h,w = theta.size()
@@ -53,17 +53,20 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamm
         # for all pixels.
         e_pred, euler_angles, trans = pixelwise_e_estimation(grid_coords, matched_coords)
 
-        rot_estimated = torch.zeros((batch_size, 3)).to(device)
-        trans_estimated = torch.zeros((batch_size, 3)).to(device)
+        rot_estimated = euler_angles.mean(axis=[-1,-2])
+        trans_estimated = trans.mean(axis=[-1,-2])
+
+        # rot_estimated = torch.zeros((batch_size, 3)).to(device)
+        # trans_estimated = torch.zeros((batch_size, 3)).to(device)
 
         i_weight = gamma ** (n_predictions - i - 1)
 
         # iterate over all batches.
 
-        for batch in range(batch_size):
-            e_batch = e_pred[batch].view(3,3,h,w) # [3,3,H,W]
-            rot_batch = euler_angles[batch] # [3,H,W]
-            trans_batch = trans[batch] # [3,H,W]
+        # for batch in range(batch_size):
+        #     e_batch = e_pred[batch].view(3,3,h,w) # [3,3,H,W]
+        #     rot_batch = euler_angles[batch] # [3,H,W]
+        #     trans_batch = trans[batch] # [3,H,W]
 
             # x = grid_coords[batch].view(3, h*w) # [3,H*W]
             # x_hat = matched_coords[batch].view(3, h*w) # [3,H*W]
@@ -78,8 +81,8 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamm
             # rot_estimated[batch] = rot_batch.view(3,h*w) @ weights.view(h*w)
             # trans_estimated[batch] = trans_batch.view(3,h*w) @ weights.view(h*w)
 
-            rot_estimated[batch] = rot_batch.mean(axis=[-1,-2])
-            trans_estimated[batch] = trans_batch.mean(axis=[-1,-2])
+            # rot_estimated[batch] = rot_batch.mean(axis=[-1,-2])
+            # trans_estimated[batch] = trans_batch.mean(axis=[-1,-2])
 
         i_loss = (rot_estimated - rot_gt).abs() + tau * (trans_estimated - trans_gt).abs()
         vo_loss += i_weight * i_loss.mean()

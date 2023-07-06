@@ -18,4 +18,5 @@ python main_flow.py \
 --num_steps 100000 \
 --image_dir "/tmp/Singapore" \
 --label_dir "/tmp/Singapore" \
+--debug \
 2>&1 | tee -a ${CHECKPOINT_DIR}/train.log

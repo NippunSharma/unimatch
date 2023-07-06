@@ -25,7 +25,8 @@ class Logger:
         if is_depth:
             print('step: %06d \t loss: %.3f' % (self.total_steps, self.running_loss['total_loss'] / self.summary_freq))
         else:
-            print('step: %06d \t epe: %.3f' % (self.total_steps, self.running_loss['epe'] / self.summary_freq))
+            # print('step: %06d \t epe: %.3f' % (self.total_steps, self.running_loss['epe'] / self.summary_freq))
+            print('step: %06d \t epe: %.3f' % (self.total_steps, self.running_loss['total_loss'] / self.summary_freq))
 
         for k in self.running_loss:
             self.summary_writer.add_scalar(mode + '/' + k,
