@@ -1,4 +1,6 @@
 import torch
+torch.autograd.set_detect_anomaly(True)
+
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 

@@ -71,6 +71,9 @@ class SingaporeDataset(data.Dataset):
     filename2 = self.processed_df.loc[idx, "Filename"].replace(".jpg", "")
     id = self.processed_df.loc[idx, "TrajectoryId"]
     rot = self.processed_df.loc[idx, self.rot_cols].values.flatten().astype(float)
+    rot = rot * np.pi / 180.
+    rot = np.where(rot > np.pi, rot - np.pi, rot)
+    rot = np.where(rot < -np.pi, rot + np.pi, rot)
     trans = self.processed_df.loc[idx, self.trans_cols].values.flatten().astype(float)
     trans /= np.linalg.norm(trans) # make translation vector of unit length.
 
@@ -97,7 +100,7 @@ class SingaporeDataset(data.Dataset):
 
     return torch.from_numpy(img1).permute(2,0,1).float().to(self.device), \
             torch.from_numpy(img2).permute(2,0,1).float().to(self.device), \
-            torch.from_numpy(rot * np.pi / 180.), torch.from_numpy(trans)
+            torch.from_numpy(rot), torch.from_numpy(trans)
 
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False,

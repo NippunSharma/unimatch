@@ -84,7 +84,7 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamm
             # rot_estimated[batch] = rot_batch.mean(axis=[-1,-2])
             # trans_estimated[batch] = trans_batch.mean(axis=[-1,-2])
 
-        i_loss = (rot_estimated - rot_gt).abs() + tau * (trans_estimated - trans_gt).abs()
+        i_loss = (rot_estimated - rot_gt).norm(dim=1) + tau * (trans_estimated - trans_gt).norm(dim=1)
         vo_loss += i_weight * i_loss.mean()
 
     return vo_loss
