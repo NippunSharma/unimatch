@@ -16,7 +16,7 @@ def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix
     # calculate weights using flow consistency.
     fwd_flow = flow_pred[:b]
     bwd_flow = flow_pred[b:]
-    warp_fwd_flow = F.grid_sample(-bwd_flow, matched_coords)
+    warp_fwd_flow = F.grid_sample(-bwd_flow, matched_coords.permute(0,2,3,1))
     flow_diff = (fwd_flow - warp_fwd_flow) # [B,2,H,W]
     flow_diff = flow_diff.norm(dim=1).view(b,h*w) # [B,H*W]
     weights = F.softmin(flow_diff, dim=1)
@@ -52,7 +52,7 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, camera_matrix
 
         # using the matched correspondences, estimate the essential matrix
         # for all pixels.
-        rot_estimated, trans_estimated = pixelwise_e_estimation(grid_coords, matched_coords, camera_matrix)
+        rot_estimated, trans_estimated = pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix)
         i_weight = gamma ** (n_predictions - i - 1)
 
         i_loss = (rot_estimated - rot_gt).norm(dim=1) + tau * (trans_estimated - trans_gt).norm(dim=1)

@@ -20,16 +20,16 @@
 # --label_dir "/tmp/Singapore" \
 # --debug \
 # 2>&1 | tee -a ${CHECKPOINT_DIR}/train.log
+# --resume gmflow-scale2-regrefine6-mixdata-train320x576-4e7b215d.pth \
 
 CHECKPOINT_DIR=checkpoints_flow/singapore-gmflow-scale2 && \
 mkdir -p ${CHECKPOINT_DIR} && \
 python main_flow.py \
 --checkpoint_dir ${CHECKPOINT_DIR} \
---resume gmflow-scale2-regrefine6-mixdata-train320x576-4e7b215d.pth \
 --stage singapore_vo \
---batch_size 4 \
+--batch_size 1 \
 --lr 2e-4 \
---image_size 320 576 \
+--image_size 32 32 \
 --padding_factor 32 \
 --upsample_factor 4 \
 --num_scales 2 \
@@ -46,4 +46,5 @@ python main_flow.py \
 --image_dir "/tmp/Singapore" \
 --label_dir "/tmp/Singapore" \
 --debug \
+--pred_bidir_flow \
 2>&1 | tee -a ${CHECKPOINT_DIR}/train.log
