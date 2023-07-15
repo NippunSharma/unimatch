@@ -1,39 +1,29 @@
 import torch
 from unimatch.geometry import coords_grid
+import kornia.geometry.epipolar as epipolar
 
-def pixelwise_e_estimation(grid_coords, matched_coords):
+def pixelwise_e_estimation(grid_coords, matched_coords, camera_matrix):
     """
     estimate the essential matrix pixelwise from the correspondences.
+    grid_coords: [B,2,H,W]
+    matched_coords: [B,2,H,W]
     """
+    b,_,h,w = grid_coords.size()
 
-    # 1 point correspondences. (non-holonomic motion)
-    denom = matched_coords[:, 0, :, :] + grid_coords[:, 0, :, :] + 1e-7
-    numer = matched_coords[:, 1, :, :] - grid_coords[:, 1, :, :] + 1e-7
+    # reshape grid and matched coords in kornia shape.
+    grid_coords = grid_coords.permute(0,2,3,1).view(b,h*w,2)
+    matched_coords = matched_coords.permute(0,2,3,1).view(b,h*w,2)
 
-    theta = -2 * torch.atan2(numer, denom)# [B,H,W]
-    b,h,w = theta.size()
-    theta = theta.view(b, h, w, 1)
+    fundamental_matrix = epipolar.find_fundamental(grid_coords, matched_coords)
+    essential_matrix = epipolar.essential_from_fundamental(fundamental_matrix, camera_matrix, camera_matrix)
+    rot, trans, _ = epipolar.motion_from_essential_choose_solution(essential_matrix, camera_matrix, camera_matrix,
+                                                                   grid_coords, matched_coords)
 
-    zeros = torch.zeros_like(theta)
-    ones = torch.ones_like(theta)
+    rot = matrix_to_euler_angles(rot, "XYZ")
 
-    rot = torch.cat([torch.cos(theta), -torch.sin(theta), zeros,
-                     torch.sin(theta), torch.cos(theta), zeros,
-                     zeros, zeros, ones], axis=3) # [B,H,W,9]
+    return rot, trans
 
-    # get roll, pitch, yaw from rotation matrix.
-    rot = rot.view(b,h,w,3,3)
-    euler_angles = matrix_to_euler_angles(rot, "XYZ").permute(0,3,1,2) # [B,3,H,W]
-
-    trans = torch.cat([torch.cos(theta / 2.), torch.sin(theta / 2.), zeros], axis=3).permute(0,3,1,2) # [B,3,H,W]
-
-    e_pred = torch.cat([zeros, zeros, torch.sin(theta / 2.),
-                        zeros, zeros, torch.cos(theta / 2.),
-                        torch.sin(theta / 2.), -torch.cos(theta / 2.), zeros], axis=1) # [B,9,H,W]
-    
-    return e_pred, euler_angles, trans
-
-def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamma=0.9):
+def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, camera_matrix, tau=0.5, gamma=0.9):
     """
     corr: HxWxHxW (pixelwise correlation b/w img1 and img2)
     """
@@ -51,38 +41,8 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, tau=0.5, gamm
 
         # using the matched correspondences, estimate the essential matrix
         # for all pixels.
-        e_pred, euler_angles, trans = pixelwise_e_estimation(grid_coords, matched_coords)
-
-        rot_estimated = euler_angles.mean(axis=[-1,-2])
-        trans_estimated = trans.mean(axis=[-1,-2])
-
-        # rot_estimated = torch.zeros((batch_size, 3)).to(device)
-        # trans_estimated = torch.zeros((batch_size, 3)).to(device)
-
+        rot_estimated, trans_estimated = pixelwise_e_estimation(grid_coords, matched_coords, camera_matrix)
         i_weight = gamma ** (n_predictions - i - 1)
-
-        # iterate over all batches.
-
-        # for batch in range(batch_size):
-        #     e_batch = e_pred[batch].view(3,3,h,w) # [3,3,H,W]
-        #     rot_batch = euler_angles[batch] # [3,H,W]
-        #     trans_batch = trans[batch] # [3,H,W]
-
-            # x = grid_coords[batch].view(3, h*w) # [3,H*W]
-            # x_hat = matched_coords[batch].view(3, h*w) # [3,H*W]
-
-            # weights = torch.zeros((h,w)).to(device)
-            # for row in range(e_batch.size()[-2]):
-            #     for col in range(e_batch.size()[-1]):
-            #         vals = (x_hat.T @ e_batch[:,:,row,col]) @ x # [H*w, H*W]
-            #         weights[row, col] = (torch.diag(vals) ** 2).sum()
-
-            # weights = weights / weights.sum()
-            # rot_estimated[batch] = rot_batch.view(3,h*w) @ weights.view(h*w)
-            # trans_estimated[batch] = trans_batch.view(3,h*w) @ weights.view(h*w)
-
-            # rot_estimated[batch] = rot_batch.mean(axis=[-1,-2])
-            # trans_estimated[batch] = trans_batch.mean(axis=[-1,-2])
 
         i_loss = (rot_estimated - rot_gt).norm(dim=1) + tau * (trans_estimated - trans_gt).norm(dim=1)
         vo_loss += i_weight * i_loss.mean()

@@ -438,8 +438,12 @@ def main(args):
 
             flow_preds = results_dict['flow_preds']
 
+            camera_matrix = torch.tensor([[935.6461822571149, 0, 1501.8278990534407],
+                                          [0, 935.7779926708049, 1016.1713538034546],
+                                          [0, 0, 1]], dtype=torch.double).repeat(args.batch_size,1,1)
+
             loss = vo_loss_func(flow_preds, rot_gt, trans_gt,
-                                args.batch_size, device, args.tau, args.gamma,
+                                args.batch_size, device, camera_matrix, args.tau, args.gamma,
                                 )
 
             if isinstance(loss, float):
