@@ -1,20 +1,31 @@
 import torch
-from unimatch.geometry import coords_grid
 import kornia.geometry.epipolar as epipolar
+import torch.nn.functional as F
 
-def pixelwise_e_estimation(grid_coords, matched_coords, camera_matrix):
+from unimatch.geometry import coords_grid
+
+def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix):
     """
     estimate the essential matrix pixelwise from the correspondences.
+    flow_pred: [2*B,2,H,W]
     grid_coords: [B,2,H,W]
     matched_coords: [B,2,H,W]
     """
     b,_,h,w = grid_coords.size()
 
+    # calculate weights using flow consistency.
+    fwd_flow = flow_pred[:b]
+    bwd_flow = flow_pred[b:]
+    warp_fwd_flow = F.grid_sample(-bwd_flow, matched_coords)
+    flow_diff = (fwd_flow - warp_fwd_flow) # [B,2,H,W]
+    flow_diff = flow_diff.norm(dim=1).view(b,h*w) # [B,H*W]
+    weights = F.softmin(flow_diff, dim=1)
+
     # reshape grid and matched coords in kornia shape.
     grid_coords = grid_coords.permute(0,2,3,1).view(b,h*w,2)
     matched_coords = matched_coords.permute(0,2,3,1).view(b,h*w,2)
 
-    fundamental_matrix = epipolar.find_fundamental(grid_coords, matched_coords)
+    fundamental_matrix = epipolar.find_fundamental(grid_coords, matched_coords, weights)
     essential_matrix = epipolar.essential_from_fundamental(fundamental_matrix, camera_matrix, camera_matrix)
     rot, trans, _ = epipolar.motion_from_essential_choose_solution(essential_matrix, camera_matrix, camera_matrix,
                                                                    grid_coords, matched_coords)
@@ -36,8 +47,8 @@ def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, camera_matrix
 
     for i in range(n_predictions):
         # create e_pred from flow_preds.
-        flow_pred = flow_preds[i] # [B,2,H,W]
-        matched_coords = flow_pred + grid_coords
+        flow_pred = flow_preds[i] # [2*B,2,H,W]
+        matched_coords = flow_pred[:batch_size,:,:,:] + grid_coords
 
         # using the matched correspondences, estimate the essential matrix
         # for all pixels.
