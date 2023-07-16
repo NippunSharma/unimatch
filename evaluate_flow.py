@@ -4,6 +4,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from pathlib import Path
 
 from normalized_rpe import normalised_relative_pose_errors
 from dataloader.flow.datasets import FlyingChairs, FlyingThings3D, MpiSintel, KITTI, SingaporeDataset
@@ -496,7 +497,7 @@ def validate_sintel(model,
 
     return results
 
-@torch.no_grad
+@torch.no_grad()
 def validate_singapore(model,
                        device,
                        args
@@ -504,20 +505,21 @@ def validate_singapore(model,
     
     model.eval()
 
-    val_dataset = SingaporeDataset(args.image_dir, args.label_dir, "val", device, args.image_size)
+    val_dataset = SingaporeDataset(Path(args.image_dir),
+                                   Path(args.label_dir),
+                                   "val", device, args.image_size)
     print("Number of validation image pairs:", len(val_dataset))
 
-    val_loader = torch.utils.data.DataLoader(val_dataset, 1, num_workers=args.num_workers, shuffle=False
-                                             pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, 256, shuffle=False)
 
-    rot_init_pred = torch.zeros((1,3), dtype=torch.float).to(device)
-    trans_init_pred = torch.zeros((1,3), dtype=torch.float).to(device)
+    init_pred = torch.zeros((1,6), dtype=torch.float).to(device)
+    init_gt = torch.zeros((1,6), dtype=torch.float).to(device)
 
-    rot_init_gt = torch.zeros((1,3), dtype=torch.float).to(device)
-    trans_init_gt = torch.zeros((1,3), dtype=torch.float).to(device)
+    all_diff_predictions = []
+    all_diff_gt = []
 
-    all_predictions = torch.zeros((len(val_dataset), 6), dtype=torch.float).to(device)
-    all_gt = torch.zeros((len(val_dataset), 6), dtype=torch.float).to(device)
+    all_predictions = []
+    all_gt = []
 
     for i, sample in enumerate(val_loader):
         img1, img2, rot_gt, trans_gt = [x.to(device) for x in sample]
@@ -533,17 +535,16 @@ def validate_singapore(model,
                                 )
         
         flow_preds = results_dict['flow_preds']
+        h, w = flow_preds[0].size()[-2:]
+        flow_pred = flow_preds[0] # take first output.
 
         camera_matrix = torch.tensor([[935.6461822571149, 0, 1501.8278990534407],
                                         [0, 935.7779926708049, 1016.1713538034546],
-                                        [0, 0, 1]], dtype=torch.float).repeat(1,1,1)
+                                        [0, 0, 1]], dtype=torch.float).repeat(int(flow_pred.size()[0]/2),1,1)
         camera_matrix = camera_matrix.to(device)
-        h, w = flow_preds[0].size()[-2:]
 
-        grid_coords = coords_grid(1, h, w).to(device) # [B,2,H,W]
-
-        flow_pred = flow_preds[0] # take first output.
-        matched_coords = flow_pred[:1,:,:,:] + grid_coords
+        grid_coords = coords_grid(int(flow_pred.size()[0]/2), h, w).to(device) # [B,2,H,W]
+        matched_coords = flow_pred[:int(flow_pred.size()[0]/2),:,:,:] + grid_coords
 
         # using the matched correspondences, estimate the essential matrix
         # for all pixels.
@@ -553,19 +554,24 @@ def validate_singapore(model,
         rot_estimated = rot_estimated * 180. / np.pi
         rot_gt = rot_gt * 180. / np.pi
 
-        trans_init_pred += trans_estimated
-        rot_init_pred += rot_estimated
+        all_diff_predictions.append(torch.cat([trans_estimated, rot_estimated], dim=1))
+        all_diff_gt.append(torch.cat([trans_gt, rot_gt], dim=1))
 
-        trans_init_gt += trans_gt
-        rot_init_gt += rot_gt
+    all_diff_predictions = torch.cat(all_diff_predictions, dim=0)
+    all_diff_gt = torch.cat(all_diff_gt, dim=0)
 
-        predicted = torch.cat([trans_init_pred, rot_init_pred], dim=1)
-        ground_truth = torch.cat([trans_init_gt, rot_init_gt], dim=1)
+    for i in range(len(val_dataset)):
+        all_predictions.append(init_pred)
+        all_gt.append(init_gt)
 
-        all_predictions[i, :] = predicted
-        all_gt[i, :] = ground_truth
+        init_pred += all_diff_predictions[i, :]
+        init_gt += all_diff_gt[i, :]
 
-    return normalised_relative_pose_errors(all_predictions, all_gt)
+    all_predictions = torch.cat(all_predictions, dim=0)
+    all_gt = torch.cat(all_gt, dim=0)
+
+    return normalised_relative_pose_errors(all_predictions.cpu().detach().numpy(),
+                                           all_gt.cpu().detach().numpy())
 
 @torch.no_grad()
 def validate_kitti(model,

@@ -27,6 +27,7 @@ mkdir -p ${CHECKPOINT_DIR} && \
 python main_flow.py \
 --checkpoint_dir ${CHECKPOINT_DIR} \
 --stage singapore_vo \
+--val_dataset singapore_vo \
 --batch_size 1 \
 --lr 2e-4 \
 --image_size 32 32 \
@@ -39,7 +40,7 @@ python main_flow.py \
 --reg_refine \
 --num_reg_refine 6 \
 --with_speed_metric \
---val_freq 5000 \
+--val_freq 1 \
 --save_ckpt_freq 10000 \
 --num_steps 30000 \
 --summary_freq 1 \

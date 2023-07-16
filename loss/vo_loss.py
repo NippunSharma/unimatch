@@ -45,6 +45,7 @@ def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix
                                                                    grid_coords, matched_coords)
 
     rot = matrix_to_euler_angles(rot, "XYZ")
+    trans = trans.view(b,3)
 
     return rot, trans
 
