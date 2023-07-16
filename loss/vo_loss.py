@@ -11,6 +11,8 @@ def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix
     grid_coords: [B,2,H,W]
     matched_coords: [B,2,H,W]
     """
+    # top n points are selcted.
+    n = 100
     b,_,h,w = grid_coords.size()
 
     # calculate weights using flow consistency.
@@ -20,12 +22,20 @@ def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix
     flow_diff = (fwd_flow - warp_fwd_flow) # [B,2,H,W]
     flow_diff = flow_diff.norm(dim=1).view(b,h*w) # [B,H*W]
     weights = F.softmin(flow_diff, dim=1)
+    sorted_args = torch.argsort(weights, dim=1)
 
     # reshape grid and matched coords in kornia shape.
     grid_coords = grid_coords.permute(0,2,3,1).view(b,h*w,2)
     matched_coords = matched_coords.permute(0,2,3,1).view(b,h*w,2)
 
-    fundamental_matrix = epipolar.find_fundamental(grid_coords, matched_coords, weights)
+    grid_coords = grid_coords[torch.arange(b).repeat(n,1).t(), sorted_args[:,-n:], :]
+    matched_coords = matched_coords[torch.arange(b).repeat(n,1).t(), sorted_args[:,-n:], :]
+
+    grid_coords_norm, t_1 = epipolar.normalize_points(grid_coords)
+    matched_coords_norm, t_2 = epipolar.normalize_points(matched_coords)
+
+    fundamental_matrix = epipolar.find_fundamental(grid_coords_norm, matched_coords_norm)
+    fundamental_matrix = t_1.t() @ fundamental_matrix @ t_2
     essential_matrix = epipolar.essential_from_fundamental(fundamental_matrix, camera_matrix, camera_matrix)
     rot, trans, _ = epipolar.motion_from_essential_choose_solution(essential_matrix, camera_matrix, camera_matrix,
                                                                    grid_coords, matched_coords)
@@ -34,7 +44,7 @@ def pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix
 
     return rot, trans
 
-def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, camera_matrix, tau=0.5, gamma=0.9):
+def vo_loss_func(flow_preds, rot_gt, trans_gt, batch_size, device, camera_matrix, tau=2.0, gamma=0.9):
     """
     corr: HxWxHxW (pixelwise correlation b/w img1 and img2)
     """
