@@ -15,7 +15,7 @@ from loss.vo_loss import vo_loss_func
 
 from evaluate_flow import (validate_chairs, validate_things, validate_sintel, validate_kitti,
                            create_kitti_submission, create_sintel_submission,
-                           inference_flow,
+                           inference_flow, validate_singapore
                            )
 
 from utils.logger import Logger
@@ -500,6 +500,12 @@ def main(args):
 
                 val_results = {}
                 # support validation on multiple datasets
+
+                if 'singapore_vo' in args.val_dataset:
+                    results_dict = validate_singapore(model, device, args)
+                    if args.local_rank == 0:
+                        val_results.update(results_dict)
+
                 if 'chairs' in args.val_dataset:
                     results_dict = validate_chairs(model_without_ddp,
                                                    with_speed_metric=args.with_speed_metric,

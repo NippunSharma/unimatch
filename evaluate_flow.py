@@ -5,10 +5,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from dataloader.flow.datasets import FlyingChairs, FlyingThings3D, MpiSintel, KITTI
+from normalized_rpe import normalised_relative_pose_errors
+from dataloader.flow.datasets import FlyingChairs, FlyingThings3D, MpiSintel, KITTI, SingaporeDataset
 from utils import frame_utils
 from utils.flow_viz import save_vis_flow_tofile, flow_to_image
 import imageio
+from unimatch.geometry import coords_grid
+from loss.vo_loss import pixelwise_e_estimation
 
 from utils.utils import InputPadder, compute_out_of_boundary_mask
 from glob import glob
@@ -493,6 +496,76 @@ def validate_sintel(model,
 
     return results
 
+@torch.no_grad
+def validate_singapore(model,
+                       device,
+                       args
+                    ):
+    
+    model.eval()
+
+    val_dataset = SingaporeDataset(args.image_dir, args.label_dir, "val", device, args.image_size)
+    print("Number of validation image pairs:", len(val_dataset))
+
+    val_loader = torch.utils.data.DataLoader(val_dataset, 1, num_workers=args.num_workers, shuffle=False
+                                             pin_memory=True)
+
+    rot_init_pred = torch.zeros((1,3), dtype=torch.float).to(device)
+    trans_init_pred = torch.zeros((1,3), dtype=torch.float).to(device)
+
+    rot_init_gt = torch.zeros((1,3), dtype=torch.float).to(device)
+    trans_init_gt = torch.zeros((1,3), dtype=torch.float).to(device)
+
+    all_predictions = torch.zeros((len(val_dataset), 6), dtype=torch.float).to(device)
+    all_gt = torch.zeros((len(val_dataset), 6), dtype=torch.float).to(device)
+
+    for i, sample in enumerate(val_loader):
+        img1, img2, rot_gt, trans_gt = [x.to(device) for x in sample]
+
+        results_dict = model(img1, img2,
+                                attn_type=args.attn_type,
+                                attn_splits_list=args.attn_splits_list,
+                                corr_radius_list=args.corr_radius_list,
+                                prop_radius_list=args.prop_radius_list,
+                                num_reg_refine=args.num_reg_refine,
+                                task='flow',
+                                pred_bidir_flow=args.pred_bidir_flow
+                                )
+        
+        flow_preds = results_dict['flow_preds']
+
+        camera_matrix = torch.tensor([[935.6461822571149, 0, 1501.8278990534407],
+                                        [0, 935.7779926708049, 1016.1713538034546],
+                                        [0, 0, 1]], dtype=torch.float).repeat(1,1,1)
+        camera_matrix = camera_matrix.to(device)
+        h, w = flow_preds[0].size()[-2:]
+
+        grid_coords = coords_grid(1, h, w).to(device) # [B,2,H,W]
+
+        flow_pred = flow_preds[0] # take first output.
+        matched_coords = flow_pred[:1,:,:,:] + grid_coords
+
+        # using the matched correspondences, estimate the essential matrix
+        # for all pixels.
+        rot_estimated, trans_estimated = pixelwise_e_estimation(flow_pred, grid_coords, matched_coords, camera_matrix, device)
+
+        # convert to degrees.
+        rot_estimated = rot_estimated * 180. / np.pi
+        rot_gt = rot_gt * 180. / np.pi
+
+        trans_init_pred += trans_estimated
+        rot_init_pred += rot_estimated
+
+        trans_init_gt += trans_gt
+        rot_init_gt += rot_gt
+
+        predicted = torch.cat([trans_init_pred, rot_init_pred], dim=1)
+        ground_truth = torch.cat([trans_init_gt, rot_init_gt], dim=1)
+
+        all_predictions[i, :] = predicted
+        all_gt[i, :] = ground_truth
+
+    return normalised_relative_pose_errors(all_predictions, all_gt)
 
 @torch.no_grad()
 def validate_kitti(model,
