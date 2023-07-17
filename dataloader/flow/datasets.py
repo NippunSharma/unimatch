@@ -102,6 +102,13 @@ class SingaporeDataset(data.Dataset):
             torch.from_numpy(img2).permute(2,0,1).float().to(self.device), \
             torch.from_numpy(rot), torch.from_numpy(trans)
 
+  def get_validation_gt(self):
+    if self.split != "val":
+        return
+
+    df = pd.read_csv(Path(self.label_dir) / "train_labels.csv")
+    return df[df["TrajectoryId"] == self.trajectory_ids[0]][["Easting", "Northing", "Height", "Roll", "Pitch", "Yaw"]].values
+
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False,
                  load_occlusion=False,

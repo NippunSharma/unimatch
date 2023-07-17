@@ -513,16 +513,11 @@ def validate_singapore(model,
     val_loader = torch.utils.data.DataLoader(val_dataset, 256, shuffle=False)
 
     init_pred = torch.zeros((1,6), dtype=torch.float).to(device)
-    init_gt = torch.zeros((1,6), dtype=torch.float).to(device)
-
     all_diff_predictions = []
-    all_diff_gt = []
-
-    all_predictions = []
-    all_gt = []
+    all_predictions = [init_pred]
 
     for i, sample in enumerate(val_loader):
-        img1, img2, rot_gt, trans_gt = [x.to(device) for x in sample]
+        img1, img2, _, _ = [x.to(device) for x in sample]
 
         results_dict = model(img1, img2,
                                 attn_type=args.attn_type,
@@ -552,26 +547,17 @@ def validate_singapore(model,
 
         # convert to degrees.
         rot_estimated = rot_estimated * 180. / np.pi
-        rot_gt = rot_gt * 180. / np.pi
-
         all_diff_predictions.append(torch.cat([trans_estimated, rot_estimated], dim=1))
-        all_diff_gt.append(torch.cat([trans_gt, rot_gt], dim=1))
-
-    all_diff_predictions = torch.cat(all_diff_predictions, dim=0)
-    all_diff_gt = torch.cat(all_diff_gt, dim=0)
 
     for i in range(len(val_dataset)):
+        init_pred += all_diff_predictions[i]
         all_predictions.append(init_pred)
-        all_gt.append(init_gt)
-
-        init_pred += all_diff_predictions[i, :]
-        init_gt += all_diff_gt[i, :]
 
     all_predictions = torch.cat(all_predictions, dim=0)
-    all_gt = torch.cat(all_gt, dim=0)
+    all_gt = val_dataset.get_validation_gt()
 
     return normalised_relative_pose_errors(all_predictions.cpu().detach().numpy(),
-                                           all_gt.cpu().detach().numpy())
+                                           all_gt)
 
 @torch.no_grad()
 def validate_kitti(model,
